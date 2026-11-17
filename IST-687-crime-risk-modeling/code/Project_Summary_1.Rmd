@@ -1,0 +1,540 @@
+---
+title: "Project Update 3"
+author: "Group 3"
+output:
+  html_document:
+    df_print: paged
+---
+
+### Motivation
+You're alone on cold dark night in an unfamiliar area. Your car is out of sight parked blocks away. You want to call your mom, a friend anyone, but the fear of being branded *'a scaredy cat'* grips you. The term is one which has haughted you the protagonist in this story since childhood. Luckily you have a model one which is able to predict the probability of experiencing a crime while on route to your car given. The model will need to be provided the following information. The following script will discuss these and other interesting findings.
+
+
+• Latitude: location window will be in
+
+• Longitude: location window will be in
+
+• Date:     Will be used to extrapolate day of week, month of year
+
+• Duration: window of time a cime may occure
+
+
+### Questions
+1. Does age play a role in crime statistics?
+
+2. Does Income Play a role in crime statistics?
+
+3. Does divorce play a role in crime statistics?
+
+4. What is the probability you will experience a crime while traveling to your car?
+
+```{r include=FALSE}
+
+options(warn=-1)
+
+# general visualisation
+library('ggplot2') # visualisation
+library('scales') # visualisation
+library('grid') # visualisation
+library('gridExtra') # visualisation
+library('RColorBrewer') # visualisation
+library('corrplot') # visualisation
+
+
+library(kernlab)
+library(Metrics)
+library(ggplot2)
+library(stats)
+library(kdensity)
+library(e1071)
+library(caret)
+library(gridExtra)
+
+# general data manipulation
+library('dplyr') # data manipulation
+library('readr') # input/output
+library('data.table') # data manipulation
+library('tibble') # data wrangling
+library('tidyr') # data wrangling
+library('stringr') # string manipulation
+library('forcats') # factor manipulation
+library(sqldf)
+
+# specific visualisation
+library('ggrepel') # visualisation
+library('ggridges') # visualisation
+library('ggExtra') # visualisation
+library('ggforce') # visualisation
+library('viridis') # visualisation
+
+# specific data manipulation
+library('lazyeval') # data wrangling
+library('broom') # data wrangling
+library('purrr') # string manipulation
+library(corrplot)
+library(dismo)
+
+# Date plus forecast
+library('lubridate') # date and time
+library('timeDate') # date and time
+library('forecast') # time series analysis
+library('prophet') # time series analysis
+library('timetk') # time series analysis
+
+# Maps / geospatial
+library('geosphere') # geospatial locations
+library('leaflet') # maps
+library('leaflet.extras') # maps
+library('maps') # maps
+```
+
+
+
+### Import Dataset
+Let us begin by importing our dataset aggergated across several different sources outlined at bottom of the notebook.  In short our table consists of demographic, general location and crime statistics. To simplify the code I performed the joins prior across all the datasets.
+• 878,049 Records
+• 63 Columns
+```{r}
+# Read In file 
+df = read.csv('C:/Users/Alex Geiger/Desktop/School Project/clean_tbl.csv')
+
+# Print row and column data
+print(paste('Number of rows: ',nrow(df))); print(paste('Number of cols: ',ncol(df)))
+
+```
+
+### Create Date Features
+Here we create date features and then sample 50,000 rows from the original dataset which are display using the head dataframe function. In general the sample data set is used to test code that would otherwise take a lot of time.
+```{r}
+
+# Create our date vector 
+df$Dates_crime  <- as.Date(df$Dates_crime)
+df$hrs        <- hour(df$Dates_crime)    # calculate hours row
+df$norm_date    <- df$Dates_crime - min(df$Dates_crime) # setup normalized date
+df$norm_date    <- as.integer(df$norm_date)             # get integer in days
+
+```
+
+
+### Analysis of Crime Occurrences
+In the graph we see the leading cause of crime is larceny and theft by a large margin. This crime is one that is of particular interest to you as you may just make the long voyage to your inconviently parked car which is beyond that of which is known to you. However, there is a better way identify 
+```{r echo=FALSE}
+
+df %>%
+  group_by(Category_crime) %>%
+  summarize(n=n(),hs_degree=mean(hs_degree)) %>%
+  arrange(n) %>%
+  ggplot(aes(reorder(Category_crime, n, FUN = min), n, fill = hs_degree)) +
+  geom_col() + coord_flip() + theme() +
+  labs(x = "Type of crime", y = "Number of Occurrences") + ggtitle("Crime Summary Graph")
+
+
+```
+
+
+### Crimes We Are Looking
+Inorder to look at all that we wish to avoid we must narrow down the potential outcomes by looking at key words in the crime description rather than just a Category of crime which enlightens us to what is really going on. These key words encapsulate our greatest fears lurking beyond the shadows of this erie night. 
+```{r}
+
+# change factor to string
+df$Descript_crime <- as.character(df$Descript_crime)
+
+# may wish to include later 'MENTAL DISTURBED'
+df <- df %>%
+  filter(Descript_crime %like% 'HOMICIDE' |
+         Descript_crime %like% 'GANG ACTIVITY' |
+         Descript_crime %like% 'SHOOTING' | 
+         Descript_crime %like% 'GUN' | 
+         Descript_crime %like% 'KNIFE' | 
+         Descript_crime %like% 'DEADLY WEAPON') %>% 
+  filter( Category_crime !='NON-CRIMINAL' & Category_crime !='WEAPON LAWS')
+```
+
+
+
+### Geo Plot & Field Names
+Let's get an idea of where these crimes have occured by ploting them using leaflet which has many advantages over ggplot. After we will at the field names in the dataset. Any feild name starting with *m_* relates to male stats. Likewise any field name starting with *f_* relates to females.
+
+```{r echo=FALSE}
+
+leaflet(df) %>% addTiles() %>%
+  fitBounds(-122.6348,37.65,-122.3685,37.85)  %>%
+  addMarkers(~X_crime, ~Y_crime, popup = ~Descript_crime, label = ~Category_crime,
+             clusterOptions = markerClusterOptions())
+
+```
+
+```{r echo=FALSE}
+print('List of Data Frame Fields:');print(""); colnames(df)
+```
+
+
+### Analysis of Crime Occurrences
+In the graph we see forceible sexual offenses to be very rare so when looking into these statistics it should be noted the event happening is very unlikely. In addition we see Assults lead the way in crime and have a somewhat lower average highschool graduation rate.
+```{r echo=FALSE}
+
+# Setup table
+target_table <- df %>% group_by(id) %>%
+                summarize(n = n(), target = (n()/mean(pop_pure,na.rm = TRUE))/(max(norm_date,na.rm = TRUE)- min(norm_date,na.rm = TRUE)),
+                          hs_degree=mean(hs_degree,na.rm = TRUE),
+                          hi_median = mean(hi_median,na.rm = TRUE), 
+                          male_age=mean(m_age_median,na.rm = TRUE),
+                          Unemployed=mean(Unemployed,na.rm = TRUE)) %>%
+                filter(n > 5)%>% arrange(n) 
+
+
+corrplot(cor(target_table), method = "circle")
+
+
+```
+
+
+
+
+### Analysis of Crime Occurrences
+In the graph we see forceible sexual offenses to be very rare so when looking into these statistics it should be noted the event happening is very unlikely. In addition we see Assults lead the way in crime and have a somewhat lower average highschool graduation rate.
+```{r echo=FALSE}
+
+df %>%
+  group_by(Category_crime) %>%
+  summarize(n=n(),hs_degree=mean(hs_degree)) %>%
+  arrange(n) %>%
+  ggplot(aes(reorder(Category_crime, n, FUN = min), n, fill = hs_degree)) +
+  geom_col() + coord_flip() + theme() +
+  labs(x = "Type of crime", y = "Number of Occurrences") + ggtitle("Crime Summary Graph")
+
+
+```
+
+
+
+### Zip Code Location By Crime & Income
+In the graph we connect the instance of our greatest fears experienced by some other unknown to us and median income. The connection between income and crime is clear and if we ever so happen to find ourself in the Zip Code 94102 you better think twice before strolling through the unforgiving night else you may share the fate of those whom found themselves standing face to face with their worst nightmare.
+
+```{r echo=FALSE}
+
+df %>%
+  group_by(MZIP) %>%
+  summarize(hi_median = mean(hi_median), n= n(), population_density = sum(n()/pop_pure)) %>%
+  filter(n > 40) %>%  arrange(n) %>%
+  ggplot(aes(reorder(MZIP, population_density, FUN = min), population_density, fill = hi_median)) +
+  geom_col() +
+  coord_flip() +
+  theme() +
+  labs(x = "Type of crime", y = "Number of Criminal Records") + ggtitle("Criminal Records and Zip Code")
+
+```
+
+
+# Diving Deeper Into Income
+We see when it comes to assult your in luck if you happen to find yourself in a good part of town. However, when it comes to rape a slightly different story but only slightly because the sample for these events are incredibly small. Now, how does the day of the week play a role in crime.
+```{r echo=FALSE}
+
+# Plot Distirbution
+ggplot(df, aes(x=hi_median,fill=Category_crime)) + geom_density(alpha=.5)
+
+
+```
+
+
+# Income & Day Of Week
+In the following heatmap we can speculate two things. First, secondary Codes which is comprised of the things no city would wish to list including Homicide and Gang Activity. In our graph we see saturday the average income plumets which I suspect to be caused by gang on gang crime in low income area's. Perhaps this is where the gang hangout hotspots a place where you must likely wish to never find yourself. Second, we see vandalism goes off the chars in Higher income areas. Perhapse this is a result of kids being kids in a way no neighbor enjoys.  
+```{r echo=FALSE}
+
+df %>%
+  group_by(Category_crime,DayOfWeek_crime) %>%
+  summarize(hi_median = mean(hi_median, na.rm = TRUE),n= n()) %>%
+  filter(n > 20) %>% arrange(n) %>% ggplot() + 
+  geom_tile(aes(x = DayOfWeek_crime, y = Category_crime,fill=hi_median)) + 
+  ggtitle("Household Income & Day of Week") +
+  labs(x = "Household Income", y = "Day of Week") +
+  theme_ridges(font_size = 10, center_axis_labels = TRUE) +
+  theme(axis.title.y = element_blank())
+
+```
+
+
+
+
+# Graduation Rates & Age & Crime
+Here is the first time we look at our target features which is defined as the probability you will experience a crime on any day with no particularity. The data suggests middle class families with a good education and not enough to live behind the walls of gated community are at the highest risk of experiencing a crime. 
+```{r echo=FALSE}
+
+# Setup table
+target_table <- df %>% group_by(id) %>%
+  summarize(n = n(), target = (n()/mean(pop_pure))/(max(norm_date)- min(norm_date)), hs_degree=mean(hs_degree), hi_median = mean(hi_median), male_age=mean(m_age_median)) %>%
+  filter(n > 5)%>% arrange(n) 
+
+target_table %>% ggplot(aes(hs_degree,target)) + 
+    geom_point(aes(size = male_age,color=hi_median)) +
+    labs(y = 'Target', x = "HS Graduation Rate") +
+    ggtitle(paste("All Crime IN SF"))
+
+
+```
+
+# What is the worst age?
+From the bar chart we see the worst age to be is around 51 and uneducated and it's easy to see why this may be the case. For instance, the uneducated edlerly are easy prey for the savage animals looking to steal what little time and money they have while they are only looking to live out their last few years of life in peace.
+```{r echo=FALSE}
+
+# Bucket Age Data
+target_table %>%
+  group_by(round(male_age*.35)) %>%
+  summarize(age       = round(mean(male_age)), 
+            target    = mean(target),
+            hs_degree = mean(hs_degree)) %>%
+  
+  ggplot(aes(reorder(age, target, FUN = min), target, fill = hs_degree)) +
+  geom_col() + coord_flip() +  theme() +
+  labs(x = "Average Male Age", y = "Probability of Crime During Day") + ggtitle("Criminal Records and Zip Code")
+
+
+```
+
+
+
+### Divorce, Crime & Not In The Laborforce  Analysis
+The Story .
+```{r echo=FALSE}
+
+df %>%
+  group_by(Category_crime) %>%
+  summarize(not_labor_force = mean(not_labor_force),m_divorced_mu = mean(divorced_cdf, na.rm = TRUE)) %>%
+  ggplot(aes(reorder(Category_crime, m_divorced_mu, FUN = min), m_divorced_mu, fill = not_labor_force)) +
+  geom_col() +
+  coord_flip() +
+  theme() +
+  labs(x = "Type of Crime", y = "Mean CDF of Divorce") + ggtitle("Divorce Summary Graph")
+
+```
+
+
+### Education, Crime & Unemployed
+From the graph is all series crime has roughly the same highschool graduation rate expectation. However, we also see severe secondary crimes and unemployment go hand and hand.We see this may be very helpful while determining whether an area is or isn't save.
+```{r echo=FALSE}
+
+df %>%
+  group_by(Category_crime) %>%
+  summarize(hs_degree = mean(hs_degree),Unemployed = mean(Unemployed, na.rm = TRUE)) %>%
+  ggplot(aes(reorder(Category_crime, hs_degree, FUN = min), hs_degree, fill = Unemployed)) +
+  geom_col() +
+  coord_flip() +
+  theme() +
+  labs(x = "Type of Crime", y = "Highschool Graduation Rate") + ggtitle("Education, Crime & Unemployed")
+
+```
+
+
+
+### What exactly is a gambling Crime?
+After seeing how gambeling was effected the uneducated I felt obligated to look more into the crime. I found the descriptions were not as fun as I thought and in some cases kind of sad. Not sure what levels refers too.
+
+```{r echo=FALSE}
+
+df_gambel <- df[df$Category_crime == 'GAMBLING',]
+df_gambel <- df_gambel[df_gambel$Descript_crime != 'GAMBLING',]
+unique(df_gambel$Descript_crime)
+
+```
+
+### Percent Home Ownership & Crimes With +25,000 Records 
+The following graph shows the percent home ownership plays a masive role in drug and narcotics. To build on this idea between drugs and home  ownerships let us drill down into the data to build in other key insights?
+
+```{r echo=FALSE}
+
+dt_temp <- df %>%
+            group_by(Category_crime) %>%
+            count() %>%
+            arrange(n) %>%
+            filter(n > 25000)
+
+dt_temp <- df[as.integer(lapply(df$Category_crime, function(x) {any(x == dt_temp$Category_crime)})) == 1,]
+
+df %>%
+  ggplot(aes(x = pct_own, y = fct_rev(Category_crime), fill = ..x..)) +
+  geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01, gradient_lwd = 1.,bandwidth=0.0221) +
+  scale_fill_viridis(name = "T_max [°C]", option = "C") +
+  ggtitle("Household Income Distribution & Day of Week") +
+  labs(x = "Household Income", y = "Day of Week") +
+  theme_ridges(font_size = 13, grid = TRUE, center_axis_labels = TRUE) +
+  theme(legend.position = "none") +
+  theme(axis.title.y = element_blank())
+
+```
+
+
+### Percent Home Ownership
+The following graph shows the 2D density plot between the log of house hold median income and the log of percent home owner ship.
+```{r echo=FALSE}
+df %>% 
+  ggplot(aes(x=log(1+pct_own),y=log(1+hi_median))) + 
+  stat_density2d(aes(fill=..density..),geom="raster",contour = FALSE) +
+  scale_x_continuous(expand = c(0,0)) +
+  scale_y_continuous(expand = c(0,0))
+
+```
+
+
+
+
+
+
+### Create A Model
+Setting up our target data. 
+```{r echo=FALSE}
+
+
+
+create_features <- function(dff_plain){
+dff_plain$Unemployed_cdf <- ifelse(is.na(dff_plain$Unemployed_cdf), mean(dff_plain$Unemployed_cdf, na.rm = TRUE), dff_plain$Unemployed_cdf)
+dff_plain$divorced_cdf <- ifelse(is.na(dff_plain$divorced_cdf), mean(dff_plain$divorced_cdf, na.rm = TRUE), dff_plain$divorced_cdf)
+dff_plain$m_to_female <- dff_plain$male_p/dff_plain$female_p
+dff_plain$divorce_div_unemp <- dff_plain$divorced/dff_plain$Unemployed
+dff_plain$divorce_div_unemp <- ifelse(is.na(dff_plain$divorce_div_unemp), mean(dff_plain$divorce_div_unemp, na.rm = TRUE), dff_plain$divorce_div_unemp)
+dff_plain$has_second_mortgage <- ifelse(is.na(dff_plain$has_second_mortgage), mean(dff_plain$has_second_mortgage, na.rm = TRUE), dff_plain$has_second_mortgage)
+dff_plain$waste_labor_ratio <- dff_plain$Unemployed/(dff_plain$Unemployed + dff_plain$not_labor_force)
+return(dff_plain)
+
+}
+
+
+# Setup table
+mdl_dataset <- df %>% group_by(id) %>%
+  summarize(n = n(), target = 10000*(n()/mean(pop_pure))/(max(norm_date)- min(norm_date)),
+            hs_degree   = mean(hs_degree),
+            hs_degree_cdf   = mean(hs_degree_cdf),
+            hi_median   = mean(hi_median),
+            m_age_median = mean(m_age_median),
+            male_p       = mean(male_p),
+            female_p     = mean(female_p),
+            Unemployed_cdf = mean(Unemployed_cdf),
+            Unemployed = mean(Unemployed),
+            divorced   = mean(divorced),
+            divorced_cdf   = mean(divorced_cdf),
+            pct_own = mean(pct_own),
+            pop_den_cdf = mean(pop_den_cdf),
+            has_second_mortgage = mean(has_second_mortgage),
+            not_labor_force = mean(not_labor_force),
+            pop_den = mean(pop_den)
+            ) %>%
+  filter(n > 5) %>% 
+  arrange(n) 
+
+mdl_dataset <- create_features(mdl_dataset)
+
+head(mdl_dataset)
+
+```
+
+### K Fold Model & Prediction
+In the group three's code a model was created using K fold cross validation. The models for each fold are saved into a list structure. Then to run the model a function has been developed to combined the weighted predictions of each fold. 
+```{r}
+
+# The function creates a plot with RMSE Score in the title
+score_fun <- function(TYPEMDL,dff,mdl_any,features){
+  
+  
+  y <- dff$target # setup true values and feature space
+  y_hat <- predict(mdl_any,as.matrix(dff[,features]))
+  score <- round(rmse(y,y_hat),5) # Round RMSE Score
+  
+  # Predict estimate store in df
+  dff$target_est <- y_hat
+  
+  
+  # Create plot
+  plt <- ggplot() +
+  geom_line(data=dff, aes(x=target, y=target, group=1), linetype = "dashed", color="dodgerblue2")+
+  geom_point(data=dff, aes(x=target_est, y=target, group=1), color="dodgerblue4",size=2) +  
+    ggtitle(paste0(TYPEMDL," P(Crime/Day)  RMSE:",score)) + 
+    labs(x = "Target",y='Prediction')
+  
+  return(plt)
+
+}
+
+  # Setup Model
+  feats <- c('hs_degree_cdf','hi_median','m_age_median','m_to_female','Unemployed','divorced','pct_own','pop_den_cdf','has_second_mortgage','divorce_div_unemp','waste_labor_ratio')
+
+
+s  <- list()  
+k_fold <- kfold(mdl_dataset, k = 5)
+
+for (k in 1:5){
+
+  # setup model
+  train <- mdl_dataset[k_fold!=k,]
+  test  <- mdl_dataset[k_fold==k,]
+  data  <- as.matrix(train[,feats])
+  y     <- train$target
+  mdl   <- ksvm(x=data ,y=y)
+  
+  # Compute RMSE & Plot
+  p11<-score_fun("train",train,mdl,feats) # Score Model Train
+  p12<-score_fun("Test",test,mdl,feats)  # Score Model Test
+  
+  # plot results
+  grid.arrange(p11, p12,ncol=2) 
+  s[paste0(k)] <- mdl
+}
+
+
+
+
+```
+
+### Target Prediction
+In the group three following code a function has been created to predict the probability of crime for any given arbitrary day. However because of the limited data in the end it would be very interesting to aggergate similar crime data from another major city and compare the results to SF.
+```{r}
+
+# Predict Kfolds
+kfold_predict<- function(mdl_list,dff,features,n){
+  data = 0;
+  for (k in 1:n){
+    data = data + predict(s[[paste0(k)]],as.matrix(dff[,features]))/n}
+  return(data)}
+
+
+# Save Predictions
+mdl_dataset['target_est'] <- kfold_predict(s,mdl_dataset,feats,5)
+
+# View Predictions GGPlot
+ggplot() +
+geom_line(data=mdl_dataset, aes(x=target, y=target, group=1), linetype = "dashed", color="dodgerblue2")+
+geom_point(data=mdl_dataset, aes(x=target_est, y=target, group=1), color="dodgerblue4",size=2) +  
+  ggtitle(" Probability Of Crime Per Day Graph") + 
+  labs(x = "Target",y='Prediction')
+
+
+
+```
+
+
+
+### More Questions
+One of the things group three is particularly interested in looking into is how divorce rates, graduation rates and other factors effect on crime. In the following notebook we provide an overview into graduation rates and divorce rates.
+
+
+### Conclution
+The project was a lot of fun. I would be interested to aggergate similar crime data from another major city and compare the results to SF. One of the major concepts I wanted to capture in my model was looking at the data which defines an area rather than just an area.
+
+There are some improvements we could have tried ensembling and using more complex models like GBM light. I avoided this because I would have had to work in Bayes optimization to tune the hyper parameters and it takes quite some time. Right now between work and kaggle I just was not going to find the time. Another thing I was upset not getting to was not aggergating the divorce rate, where as divorce is normalized by the total population instead of married + divorce. The reason for this is because the mechnism I used to aggergate the day is on an old computer. 
+
+
+#  Removed Work
+### Preface & Objective
+Our objective is to create a model which predicts the probability an individual will experience a crime. The dependent user inputs entered into our model will consist of Latitude, Longitude, Date, Duration. The output will be a vector with elements representing the Multi-class probabilities of our target crime classes. Note, other features will be used as well and extrapolated using the provided Latitude, Longitude, Date.
+
+
+The following data was aggregated over the following sources:
+
+• Targets uses the San Francisco from  https://www.kaggle.com/c/sf-crime
+
+• NCESSCH education data
+
+• Gazetteer Files 
+
+• All other data used 5 Yr. ACS data
+
+
+Note: The NYC data was not used because I found it to be only aggregate data.

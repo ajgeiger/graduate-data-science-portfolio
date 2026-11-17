@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+.Python
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Office lock files
+~$*
+
+# OS
+.DS_Store
+Thumbs.db
