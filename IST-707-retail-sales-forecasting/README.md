@@ -24,13 +24,13 @@ The data is not in the repo. The competition rules do not allow redistribution, 
 
 The original project had three parts.
 
-- A pandas pipeline (`src/`) that unpivots the sales table, joins prices and the calendar, and builds features: 7 and 28 day lags, rolling means of those lags, date parts, events, SNAP flags, price, how many prices an item has had, how many items a store sells at a price, and the item's mean and standard deviation of sales.
-- Clustering (k-means in Python, hierarchical in R) and classifiers (naive Bayes, decision tree, SVM) used to explore what drives sales. The main finding was that stores and items with a stable product line and price history sell more, which led to the price count features.
+- A pandas pipeline (`src/m5_forecasting/features.py`) that unpivots the sales table, joins prices and the calendar, and builds features: 7 and 28 day lags, rolling means of those lags, date parts, events, SNAP flags, price, how many prices an item has had, how many items a store sells at a price, and the item's mean and standard deviation of sales.
+- Clustering (k-means in Python, hierarchical in R) and classifiers (naive Bayes, decision tree, SVM) used to explore what drives sales. The main finding was that stores and items with a stable product line and price history sell more, which led to the price count features. The SVM weekday classifier in the notebook left its label in the inputs, so its accuracy does not mean much.
 - A LightGBM model with a Tweedie objective (learning rate 0.075, 128 leaves, 1,250 rounds) that forecasts one day at a time and feeds each day's predictions back in as lags for the next day.
 
 The original validation used 2 million rows drawn at random from the training data, and the item encodings and price counts were computed over the whole history. That lets the model see the same days it is scored on, so the validation RMSE in the notebook (2.031) is optimistic and is not comparable to a real forecast.
 
-`backtest/` replaces that check with a rolling-origin backtest. For each origin it:
+`src/m5_forecasting/backtest.py` replaces that check with a rolling-origin backtest. For each origin it:
 
 1. computes the price counts and item mean and standard deviation from the 365 days up to the origin only,
 2. trains LightGBM with the original settings on those 365 days (about 11.1 million item and day rows where the item was on sale),
@@ -86,8 +86,8 @@ The feature pipeline and recursive forecast were adapted from these public Kaggl
 
 - "M5 Accuracy: Tweedie is back!" by kernelgenerator: https://www.kaggle.com/kernelgenerator/m5-accuracy-tweedie-is-back
 - "M5 custom features", "M5 lags features", and "M5 simple FE" by Konstantin Yakovlev (kyakovlev): https://www.kaggle.com/kyakovlev/m5-custom-features, https://www.kaggle.com/kyakovlev/m5-lags-features, https://www.kaggle.com/kyakovlev/m5-simple-fe
-- `scripts/ClassificationInsight.R` builds on "Back to (predict) the future: Interactive M5 EDA" by Heads or Tails: https://www.kaggle.com/headsortails/back-to-predict-the-future-interactive-m5-eda
-- The confusion matrix plot in `code/classification.ipynb` is from Wagner Cipriano's seaborn example, credited in the notebook.
+- `r/sales_seasonality.R` builds on "Back to (predict) the future: Interactive M5 EDA" by Heads or Tails: https://www.kaggle.com/headsortails/back-to-predict-the-future-interactive-m5-eda
+- `src/m5_forecasting/confusion_matrix_plot.py` is adapted from Wagner Cipriano's pretty confusion matrix example: https://github.com/wcipriano/pretty-print-confusion-matrix
 
 ## Running it
 
@@ -101,13 +101,13 @@ unzip m5-forecasting-accuracy.zip -d data/raw
 Then, from this folder:
 
 ```
-pip install lightgbm pandas numpy scipy
+pip install -r requirements.txt
 python backtest/run_backtest.py --data data/raw
 ```
 
-The backtest prints each window's results and writes `backtest/results.csv`. It took about 30 minutes on an 8-core machine and used about 2.5 GB of memory while training. `--train-days` and `--rounds` make it smaller for a quick check.
+The backtest prints each window's results and writes `backtest/results.csv` and `backtest/feature_importance.csv`. It took about 30 minutes on an 8-core machine and used about 2.5 GB of memory while training. `--train-days` and `--rounds` make it smaller for a quick check.
 
-The notebooks in `code/` import `src/` and read `data/raw/` relative to this folder. The R scripts expect to be run from this folder too. `data/` and `models/` are in `.gitignore`.
+The notebooks in `notebooks/` switch to this folder and add `src/` to the path in their first cell. The R scripts in `r/` expect to be run from this folder too. `data/` and `models/` are in `.gitignore`.
 
 ## Tools
 
@@ -115,25 +115,36 @@ Python, pandas, NumPy, LightGBM, scikit-learn, SciPy, R (e1071, rpart, caret, gg
 
 ## Files
 
-- `backtest/backtest.py`
-- `backtest/run_backtest.py`
-- `backtest/results.csv`
-- `backtest/results_importance.csv`
-- `code/forecast.ipynb`
-- `code/clustering.ipynb`
-- `code/classification.ipynb`
-- `code/data-curation.ipynb`
-- `src/dao/DAO.py`
-- `src/preprocessing/Pipeline.py`
-- `src/clustering/ClusterAnalysis.py`
-- `scripts/ClassificationInsight.R`
-- `scripts/DecisionTree.R`
-- `scripts/HierarchicalClustering.R`
-- `scripts/KMeansAnalysis.R`
-- `scripts/KNN.R`
-- `scripts/NaiveBayes.R`
-- `reports/final-report.pdf`
-- `reports/slides.pdf`
-- `images/original-feature-importance.png`
-- `images/total-daily-sales.png`
-- `images/relative-sales-heatmap.png`
+```
+README.md
+requirements.txt
+backtest/
+    run_backtest.py
+    results.csv
+    feature_importance.csv
+src/m5_forecasting/
+    data_loader.py              loads and joins the raw files
+    features.py                 feature pipeline used by the notebooks
+    backtest.py                 rolling-origin backtest and metrics
+    clustering.py               k-means score tracking
+    confusion_matrix_plot.py
+notebooks/
+    forecast.ipynb
+    clustering.ipynb
+    classification.ipynb
+    data_curation.ipynb         saves samples for the R scripts
+r/
+    sales_seasonality.R
+    decision_tree.R
+    naive_bayes.R
+    knn.R
+    hierarchical_clustering.R
+    kmeans_analysis.R
+reports/
+    final-report.pdf
+    slides.pdf
+images/
+    original-feature-importance.png
+    total-daily-sales.png
+    relative-sales-heatmap.png
+```
