@@ -1,6 +1,6 @@
 # Graduate data science portfolio
 
-These are projects I completed for my M.S. data science coursework at Syracuse University's School of Information Studies. They include a retail sales forecast, a movie inventory database, models of crime risk and high school graduation rates, and two text mining projects.
+These are projects I completed for my M.S. data science coursework at Syracuse University. They include a retail sales forecast, a movie inventory database, models of crime risk and high school graduation rates, and two text mining projects.
 
 | Project | Course | Result | Team or solo | Folder |
 | --- | --- | --- | --- | --- |
