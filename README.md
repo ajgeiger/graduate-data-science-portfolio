@@ -1,9 +1,10 @@
 # Graduate data science portfolio
 
-These are projects I completed for my M.S. data science coursework at Syracuse University. They include a retail sales forecast, a movie inventory database, models of crime risk and high school graduation rates, and two text mining projects.
+These are projects I completed for my M.S. data science coursework at Syracuse University, plus my capstone for the MIT Professional Education Applied AI and Data Science Program. They include a loan default model, a retail sales forecast, a movie inventory database, models of crime risk and high school graduation rates, and two text mining projects.
 
 | Project | Course | Result | Team or solo | Folder |
 | --- | --- | --- | --- | --- |
+| Loan default prediction | MIT Professional Education, Applied AI and Data Science Program capstone | A LightGBM model of home equity loan defaults (test AUC 0.971) with a 20% approval cutoff. Estimated net revenue rises from $10.17M to $18.30M while approving 77.7% of applicants. | Solo | [MIT-capstone-loan-default-prediction](MIT-capstone-loan-default-prediction/) |
 | Retail sales forecasting | IST 707, Data Analytics | Daily LightGBM forecasts for 30,490 Walmart item and store series (M5 data), 28 days ahead. In a three-window rolling-origin backtest the average WRMSSE was 0.6375, against 0.8938 for a seasonal naive forecast. | Solo | [IST-707-retail-sales-forecasting](IST-707-retail-sales-forecasting/) |
 | Movie inventory database | IST 659, Database Management | A member-facing movie database in third normal form, with SQL views and procedures and R plots, built on simulated data. | Solo | [IST-659-database-management](IST-659-database-management/) |
 | Crime risk modeling | IST 687, Intro to Data Science | San Francisco crime data joined with census demographics, then a support vector model of crime per day by area. | Group | [IST-687-crime-risk-modeling](IST-687-crime-risk-modeling/) |
